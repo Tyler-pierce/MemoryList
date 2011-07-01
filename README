@@ -1,0 +1,29 @@
+MemoryList - Memcached based data structure.
+
+
+See files for detailed comments, main intent:
+
+General library to store large amounts of data in memcache and be able to
+easily query and aggregate it.  Try to ensure concurrency safety and reliability
+best as reasonable for memcache.  See potential uses below for better picture.
+
+Main features:
+
+- Query modifiers: limit / offset / waypoints (for incrementally updating your view)
+- Aggregation: frees memory and aggregates data best as possible where similar, or to
+a max level (aggregate maximum 10 duplicate entries)
+- Multi-Query: maintain and query multiple structures to get time sorted results (under
+construction)
+
+
+Potential Uses:
+
+- Real time stat keeping/viewing (first production use will be tracking likes in real time
+for site with 50,000,000 monthly uniques, stay tuned)
+
+- Temporarily store app data for many users with periodic persistant storage (at your own risk,
+obviously it won't keep that safe for ya!).  I suggest double writing to 2 memcache instances
+as a start.
+
+- Functionality similar to facebooks notifications.
+
