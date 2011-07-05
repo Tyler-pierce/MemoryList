@@ -10,7 +10,7 @@ error_reporting(E_ALL);
 ini_set("display_errors", 1);
 
 
-$levels = 5000;
+$levels = 5;
 
 
 require 'config/boot_memoryList.php';

@@ -11,6 +11,8 @@ interface MemcacheDataInterface
     /// Public Interface
     public function update ($key, $value, $memcacheTimeout = -1);
 
+    public function onlyInsert($key, $value, $memcacheTimeout = false);
+
     public function increment ($key, $amount = 1);
 
     public function decrement ($key, $amount = 1);
