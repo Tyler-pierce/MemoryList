@@ -230,7 +230,7 @@ class MemoryList implements MemoryListInterface
     {
         $resultPre = $this->_preQueryWork();
 
-        $returnArray = $this->_queryWork($upperBound);
+        list($returnArray, $upperBound) = $this->_queryWork($upperBound);
 
         // if resultPre is an array it returned query data and must be merged
         if (is_array($resultPre))
@@ -348,15 +348,22 @@ class MemoryList implements MemoryListInterface
 
         $decrement = 1;
 
-        $upperBound = ($upperBound ? $upperBound : $this->_memcache->retrieve($this->_memName));
-        $lowerBound = 0;
+        if (!$upperBound)
+        {
+            $upperBound = $this->_memcache->retrieve($this->_memName);
+        }
+        
+        if (isset($this->_queryMod['useWaypoint']['value']) && $this->_queryMod['useWaypoint']['value'])
+        {
+            $waypoint = $this->_memcache->retrieve($this->_memName . '_wp');
+
+            if ($waypoint)
+            {
+                $upperBound = $waypoint;
+            }
+        }
 
         $limit = (isset($this->_queryMod['limit']['value']) ? $this->_queryMod['limit']['value'] : $upperBound);
-
-        $lowerBound = (isset($this->_queryMod['useWaypoint']['value']) && $this->_queryMod['useWaypoint']['value']
-            ? $this->_memcache->retrieve($this->_memName . '_wp')
-            : $lowerBound
-        );
 
         $skipTo = (isset($this->_queryMod['offset']['value']) && $this->_queryMod['offset']['value'] ? $this->_queryMod['offset']['value'] : 0);
 
@@ -391,7 +398,7 @@ class MemoryList implements MemoryListInterface
             }
         }
 
-        return $returnArray;
+        return array($returnArray, $upperBound);
     }
 
     /**
