@@ -348,6 +348,8 @@ class MemoryList implements MemoryListInterface
 
         $decrement = 1;
 
+        $lowerBound = 0;
+
         if (!$upperBound)
         {
             $upperBound = $this->_memcache->retrieve($this->_memName);
@@ -359,7 +361,7 @@ class MemoryList implements MemoryListInterface
 
             if ($waypoint)
             {
-                $upperBound = $waypoint;
+                $lowerBound = $waypoint;
             }
         }
 
@@ -369,7 +371,7 @@ class MemoryList implements MemoryListInterface
 
         if ($upperBound)
         {
-            for ($i = $upperBound, $j = ($upperBound - $limit) ; $i > 0 && $j < $upperBound ; $i -= $decrement)
+            for ($i = $upperBound, $j = ($upperBound - $limit) ; $i > $lowerBound && $j < $upperBound ; $i -= $decrement)
             {
                 $element = $this->_memcache->retrieve($this->_memName . '_' . $i);
 
