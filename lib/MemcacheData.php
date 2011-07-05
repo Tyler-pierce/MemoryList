@@ -149,6 +149,35 @@ class MemcacheData implements MemcacheDataInterface
     }
 
     /**
+     * Insert memcache value, not doing an update on data that is known to be new is quite
+     * a lot faster.
+     * 
+     * @param key
+     * @param value
+     * @param memcacheTimeout
+     * @return true on success false on failure to add
+     */
+    public function onlyInsert($key, $value, $memcacheTimeout = false)
+    {
+        $key = $this->_prefix . "_{$key}";
+        
+        if (! $memcacheTimeout)
+        {
+            $memcacheTimeout = $this->_defaultTiming;
+        }
+        
+        $result = false;
+        
+        // Do we have a server successfuly set up
+        if ($this->_memConn)
+        {
+            $result = $this->_memConn->set($key, $value, false, $memcacheTimeout);
+        }
+        
+        return $value;
+    }
+
+    /**
      * Increment a memcache value by amount. Recommended to use strong equality when testing
      * return value (===) as it could be incremented to 0.
      * 

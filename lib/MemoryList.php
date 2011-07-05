@@ -53,34 +53,29 @@ class MemoryList implements MemoryListInterface
     /**
      *  Should not change this array via code in this class except for 'value'.  It contains a list of the allowable
      *  query modifier chaining methods and their default values.
-     *  Most of these the latest to be called will overrite the value but in some cases they are meant
-     *  to be called many times (addQuery, to query other lists simultaneously)
-     *  All chained methods are applicable to added queries.
+     *  All chained methods are applicable to added queries using multi.
+     *  'value' will be set upon data sanitization accordingly to 'filter'
      *  @see __call
      */
     private $_queryMod = array(
         /* limit query to x results */
-        'limit'            => array('filter' => 'int',    'default' => false),
+        'limit'       => array('filter' => 'int',      'default' => false),
         /* offset of query to pull (note that query still has to run from beginning) */
-        'offset'        => array('filter' => 'int',       'default' => false),
+        'offset'      => array('filter' => 'int',      'default' => false),
         /* reverse result of each separate query */
-        'reverse'        => array('filter' => 'boolean',  'default' => false),
+        'reverse'     => array('filter' => 'boolean',  'default' => false),
         /* aggregate entire structure before querying  */
-        'aggregate'        => array('filter' => 'mixed',  'default' => false),
-        /* takes array or string MemoryList name, will run same query type on all accumulated queries  */
-        'addQuery'        => array('filter' => 'mixed',   'default' => false),
+        'aggregate'   => array('filter' => 'mixed',    'default' => false),
+        /* takes array of MemoryList names, will run same query type on all accumulated queries  */
+        'multi'       => array('filter' => 'array',    'default' => array()),
         /* 'remember' where query began */
-        'setWaypoint'    => array('filter' => 'boolean',  'default' => false),
+        'setWaypoint' => array('filter' => 'boolean',  'default' => false),
         /* sort the mixed queries by date (does nothing if only one query run) */
-        'sort'            => array('filter' => 'boolean', 'default' => true),
+        'sort'        => array('filter' => 'boolean',  'default' => true),
         /* use a waypoint if one exists and (1 query) query only up to that point (2 aggregation) aggregate from that point onward */
-        'useWaypoint'    => array('filter' => 'boolean',  'default' => false),
-        /* use the query results and set as a view */
-        'setView'        => array('filter' => 'string',   'default' => false),
-        /* note that if this flag is used the view either exists or query failed, also causes other params to fail */
-        'getView'        => array('filter' => 'boolean',  'default' => false),
-        /* get extra data pertaining to query result */
-        'debug'            => array('filter' => 'boolean','default' => false),
+        'useWaypoint' => array('filter' => 'boolean',  'default' => false),
+        /* get extra data pertaining to query result NOTE needs to be implemented still */
+        'debug'       => array('filter' => 'boolean',  'default' => false),
     );
 
 
@@ -164,6 +159,13 @@ class MemoryList implements MemoryListInterface
                         $this->_queryMod[$name]['value'] = $param;
                     }
                     break;
+
+                case 'array' :
+                    if (is_array($param))
+                    {
+                        $this->_queryMod[$name]['value'] = $param;
+                    }
+                    break;
                 
                 case 'mixed' :
                     $this->_queryMod[$name]['value'] = $param;
@@ -195,7 +197,7 @@ class MemoryList implements MemoryListInterface
 
         if (!$newTopIndex)
         {
-            $updateResult = $this->_memcache->update($this->_memName, $data['VAL'], $this->_expirey);
+            $updateResult = $this->_memcache->onlyInsert($this->_memName, $data['VAL'], $this->_expirey);
 
             if ($updateResult)
             {
@@ -207,7 +209,7 @@ class MemoryList implements MemoryListInterface
             }
         }
 
-        if ($this->_memcache->update($this->_memName . '_' . $newTopIndex, $data))
+        if ($this->_memcache->onlyInsert($this->_memName . '_' . $newTopIndex, $data))
         {
             // Success!
             return $newTopIndex;
@@ -226,53 +228,14 @@ class MemoryList implements MemoryListInterface
      */
     public function query($upperBound = false)
     {
-        $this->_preQueryWork();
+        $resultPre = $this->_preQueryWork();
 
-        $returnArray = array();
+        $returnArray = $this->_queryWork($upperBound);
 
-        $decrement = 1;
-
-        $upperBound = ($upperBound ? $upperBound : $this->_memcache->retrieve($this->_memName));
-        $lowerBound = 0;
-
-        $limit = (isset($this->_queryMod['limit']['value']) ? $this->_queryMod['limit']['value'] : $upperBound);
-
-        $lowerBound = (isset($this->_queryMod['useWaypoint']['value']) && $this->_queryMod['useWaypoint']['value']
-            ? $this->_memcache->retrieve($this->_memName . '_wp')
-            : $lowerBound
-        );
-
-        $skipTo = (isset($this->_queryMod['offset']['value']) && $this->_queryMod['offset']['value'] ? $this->_queryMod['offset']['value'] : 0);
-
-        if ($upperBound)
+        // if resultPre is an array it returned query data and must be merged
+        if (is_array($resultPre))
         {
-            for ($i = $upperBound, $j = ($upperBound - $limit) ; $i > 0 && $j < $upperBound ; $i -= $decrement)
-            {
-                $element = $this->_memcache->retrieve($this->_memName . '_' . $i);
-
-                if ($element)
-                {
-                    // decrement by the amount, so that we skip down aggregated lists correctly
-                    $decrement = $element['VAL'];
-
-                    if ($skipTo <= 0)
-                    {
-                        $returnArray[] = $element;
-                        ++$j;
-                    }
-                    else
-                    {
-                        --$skipTo;
-                    }
-                }
-                // should not be reached, if so there is corrupted data somehow in memcache, such as data overwritten by
-                // another program inserting over a key.
-                else
-                {
-                    $decrement = 1;         // keep trying to decrement by one until reaching a good value
-                    $returnArray[] = false; // false for corrupted entry
-                }
-            }
+            $returnArray = array_merge($returnArray, $resultPre);
         }
 
         $returnArray = $this->_postQueryWork($returnArray, $upperBound);
@@ -372,13 +335,92 @@ class MemoryList implements MemoryListInterface
     }
 
     /**
+     *  Here is found the meat and potatoes of running a query on a single data set accounting
+     *  for most query modifiers.  The separation is built such that preQuery and postQuery are
+     *  run once on entire query and this can be run multiple times if a multiquery is called.
+     *  
+     *  @param boolean upperBound
+     *  @return array of queried data
+     */
+    private function _queryWork ($upperBound = false)
+    {
+        $returnArray = array();
+
+        $decrement = 1;
+
+        $upperBound = ($upperBound ? $upperBound : $this->_memcache->retrieve($this->_memName));
+        $lowerBound = 0;
+
+        $limit = (isset($this->_queryMod['limit']['value']) ? $this->_queryMod['limit']['value'] : $upperBound);
+
+        $lowerBound = (isset($this->_queryMod['useWaypoint']['value']) && $this->_queryMod['useWaypoint']['value']
+            ? $this->_memcache->retrieve($this->_memName . '_wp')
+            : $lowerBound
+        );
+
+        $skipTo = (isset($this->_queryMod['offset']['value']) && $this->_queryMod['offset']['value'] ? $this->_queryMod['offset']['value'] : 0);
+
+        if ($upperBound)
+        {
+            for ($i = $upperBound, $j = ($upperBound - $limit) ; $i > 0 && $j < $upperBound ; $i -= $decrement)
+            {
+                $element = $this->_memcache->retrieve($this->_memName . '_' . $i);
+
+                if ($element)
+                {
+                    // decrement by the amount, so that we skip down aggregated lists correctly
+                    $decrement = $element['VAL'];
+
+                    if ($skipTo <= 0)
+                    {
+                        $returnArray[] = $element;
+                        ++$j;
+                    }
+                    else
+                    {
+                        --$skipTo;
+                    }
+                }
+                // should not be reached, if so there is corrupted data somehow in memcache, such as data overwritten by
+                // another program inserting over a key.
+                else
+                {
+                    $decrement = 1;         // keep trying to decrement by one until reaching a good value
+                    $returnArray[] = false; // false for corrupted entry
+                }
+            }
+        }
+
+        return $returnArray;
+    }
+
+    /**
      *  All operations that need to run before a query begin here.
      *  
-     *  @return true if query can continue, false otherwise (false does not indicate error)
+     *  @return false if nothing need happen as a result of this and query array if multi query was run
      */
     private function _preQueryWork ()
     {
-    
+        if (isset($this->_queryMod['multi']['value']))
+        {
+            // remember name of original query so that it can be reset afterward
+            $this->_tempName = $this->_name;
+
+            $queryResults = array();
+
+            foreach ($this->_queryMod['multi']['value'] as $memoryListName)
+            {
+                $this->setName($memoryListName);
+
+                $queryResults = array_merge($queryResults, $this->_queryWork());
+            }
+
+            $this->setName($this->_tempName);
+
+            return $queryResults;
+        }
+
+        return false;
     }
     
     /**
@@ -394,6 +436,13 @@ class MemoryList implements MemoryListInterface
         // Sets to true in a special case of a waypoint and aggregate request being used, which makes the aggregate function
         // pull data after the waypoint with a fresh query and only compact that data.
         $postAggregate = false;
+        $sort          = false;
+
+
+        if (isset($this->_queryMod['multi']))
+        {
+            $sort = (isset($this->_queryMod['sort']['value']) ? $this->_queryMod['sort']['value'] : $this->_queryMod['sort']['default']);
+        }
 
         // AGGREGATE
         if (isset($this->_queryMod['aggregate']['value']) && $this->_queryMod['aggregate']['value'])
@@ -428,7 +477,10 @@ class MemoryList implements MemoryListInterface
         // Reset query values in case more queries are run this script
         foreach ($this->_queryMod as $queryModKey => $queryMod)
         {
-            unset($this->_queryMod[$queryModKey]['value']);
+            if ($queryModKey != 'multi')
+            {
+                unset($this->_queryMod[$queryModKey]['value']);
+            }
         }
 
         if ($postAggregate)
@@ -436,6 +488,26 @@ class MemoryList implements MemoryListInterface
             $data = $this->query($topIndex);
 
             $this->aggregateData($data, $topIndex, false, $maxLevel);
+        }
+
+        if (isset($this->_queryMod['multi']['value']))
+        {
+            unset($this->_queryMod['multi']['value']);
+        }
+
+        if ($sort)
+        {
+            $keyedArray = array();
+
+            foreach ($returnArray as $i => $array)
+            {
+                // append i as value of least significance to avoid duplicate and resolve ties
+                $keyedArray[$array['TIM'] . '_' . $i] = $array;
+            }
+
+            krsort($keyedArray); echo '<br /><br /><br />';
+
+            $returnArray = array_values($keyedArray);
         }
 
         return $returnArray;
