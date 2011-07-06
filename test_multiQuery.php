@@ -12,8 +12,8 @@
 error_reporting(E_ALL);
 ini_set("display_errors", 1);
 
-$v         = 4;
-$aggregate = false;
+$v         = 5;
+$aggregate = true;
 $aggLevel  = true; // default full agg
 
 require 'config/boot_memoryList.php';
@@ -38,8 +38,6 @@ for ($i = 0 ; $i < 15 ; $i++)
             $result = $memoryList->setName('views'.$v)->insert('viewed-' . rand(1, 5));
             break;
     }
-    
-    if ($i % 3 == 0) sleep(1);
 }
 
 if ($aggregate)
@@ -51,14 +49,14 @@ else
     $results = $memoryList->setName('likes'.$v)->multi(array('comments'.$v, 'views'.$v))->query();
 }
 
-echo '<p>Result of query: <table><tr><th>TIME</th><th>KEY</th><th>VALUE</th></tr>';
+echo '<p>Result of query: <table><tr><th>TIME</th><th>KEY</th><th>VALUE</th><th>STRUCTURE</th></tr>';
 
 foreach ($results as $result)
 {
-    echo '<tr><td>' . $result['TIM'] . '</td><td>' . $result['KEY'] . '</td><td>' . $result['VAL'] . '</td></tr>';
+    echo '<tr><td>' . $result['TIM'] . '</td><td>' . $result['KEY'] . '</td><td>' . $result['VAL'] . '</td><td>' . $result['EXT'] . '</td></tr>';
 }
 
 echo '</table></p>';
 
-echo '<p>Done test <a href="test_insert.php">Run Again</a>.</p>';
+echo '<p>Done test <a href="test_multiQuery.php">Run Again</a>.</p>';
 

@@ -13,7 +13,7 @@ ini_set("display_errors", 1);
 require 'config/boot_memoryList.php';
 
 
-$memoryList = new MemoryList('test_structure');
+$memoryList = new MemoryList('test_struct');
 
 // 5 inserts into test_structure
 for ($i = 0 ; $i < 5 ; $i++)
@@ -21,6 +21,7 @@ for ($i = 0 ; $i < 5 ; $i++)
     $result = $memoryList->insert('somedata-' . rand(1, 5));
 }
 
+print_r($memoryList->aggregate(true)->query());
 
 echo '<p>Index of last insert: ' . $result . '</p>';
 

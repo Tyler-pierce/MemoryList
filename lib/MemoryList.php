@@ -230,7 +230,7 @@ class MemoryList implements MemoryListInterface
     {
         $resultPre = $this->_preQueryWork();
 
-        list($returnArray, $upperBound) = $this->_queryWork($upperBound);
+        list($returnArray, $upperBound) = ($resultPre ? $this->_queryWork($upperBound, $this->_name) : $this->_queryWork($upperBound));
 
         // if resultPre is an array it returned query data and must be merged
         if (is_array($resultPre))
@@ -342,7 +342,7 @@ class MemoryList implements MemoryListInterface
      *  @param boolean upperBound
      *  @return array of queried data
      */
-    private function _queryWork ($upperBound = false)
+    private function _queryWork ($upperBound = false, $extraData = false)
     {
         $returnArray = array();
 
@@ -382,6 +382,11 @@ class MemoryList implements MemoryListInterface
 
                     if ($skipTo <= 0)
                     {
+                        if ($extraData)
+                        {
+                            $element['EXT'] = $extraData;
+                        }
+
                         $returnArray[] = $element;
                         ++$j;
                     }
@@ -420,8 +425,9 @@ class MemoryList implements MemoryListInterface
             foreach ($this->_queryMod['multi']['value'] as $memoryListName)
             {
                 $this->setName($memoryListName);
-
-                $queryResults = array_merge($queryResults, $this->_queryWork());
+                
+                list($result, $topIndex) = $this->_queryWork(false, $memoryListName);
+                $queryResults = array_merge($queryResults, $result);
             }
 
             $this->setName($this->_tempName);
@@ -478,10 +484,8 @@ class MemoryList implements MemoryListInterface
         }
 
         // REVERSE RESULT
-        if (isset($this->_queryMod['reverse']['value']) && $this->_queryMod['reverse']['value'])
-        {
-            $returnArray = array_reverse($returnArray);
-        }
+        $reverse = ((isset($this->_queryMod['reverse']['value']) && $this->_queryMod['reverse']['value']) ? true : false);
+        
 
         // Reset query values in case more queries are run this script
         foreach ($this->_queryMod as $queryModKey => $queryMod)
@@ -490,7 +494,7 @@ class MemoryList implements MemoryListInterface
             {
                 unset($this->_queryMod[$queryModKey]['value']);
             }
-        }
+        }     
 
         if ($postAggregate)
         {
@@ -514,9 +518,15 @@ class MemoryList implements MemoryListInterface
                 $keyedArray[$array['TIM'] . '_' . $i] = $array;
             }
 
-            krsort($keyedArray); echo '<br /><br /><br />';
+            ksort($keyedArray);
 
             $returnArray = array_values($keyedArray);
+        }
+
+        // REVERSE RESULT
+        if ($reverse)
+        {
+            $returnArray = array_reverse($returnArray);
         }
 
         return $returnArray;
