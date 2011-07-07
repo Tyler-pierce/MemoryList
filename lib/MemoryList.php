@@ -230,7 +230,7 @@ class MemoryList implements MemoryListInterface
     {
         $resultPre = $this->_preQueryWork();
 
-        list($returnArray, $upperBound) = ($resultPre ? $this->_queryWork($upperBound, $this->_name) : $this->_queryWork($upperBound));
+        list($returnArray, $upperBound) = (is_array($resultPre) ? $this->_queryWork($upperBound, $this->_name) : $this->_queryWork($upperBound));
 
         // if resultPre is an array it returned query data and must be merged
         if (is_array($resultPre))
@@ -428,6 +428,12 @@ class MemoryList implements MemoryListInterface
                 
                 list($result, $topIndex) = $this->_queryWork(false, $memoryListName);
                 $queryResults = array_merge($queryResults, $result);
+
+                // WAYPOINT (save where last query ended)
+                if (isset($this->_queryMod['setWaypoint']['value']) && $this->_queryMod['setWaypoint']['value'])
+                {
+                    $this->_memcache->update($this->_memName . '_wp', $topIndex, $this->_expirey);
+                }
             }
 
             $this->setName($this->_tempName);
