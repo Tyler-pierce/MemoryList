@@ -209,7 +209,7 @@ class MemoryList implements MemoryListInterface
             }
         }
 
-        if ($this->_memcache->onlyInsert($this->_memName . '_' . $newTopIndex, $data))
+        if ($this->_memcache->onlyInsert($this->_memName . '_' . $newTopIndex, $data, $this->_expirey))
         {
             // Success!
             return $newTopIndex;
