@@ -69,11 +69,17 @@ class MemoryList implements MemoryListInterface
         /* takes array of MemoryList names, will run same query type on all accumulated queries  */
         'multi'       => array('filter' => 'array',    'default' => array()),
         /* 'remember' where query began */
-        'setWaypoint' => array('filter' => 'boolean',  'default' => false),
+        'setWaypoint' => array('filter' => 'mixed',    'default' => false),
         /* sort the mixed queries by date (does nothing if only one query run) */
         'sort'        => array('filter' => 'boolean',  'default' => true),
         /* use a waypoint if one exists and (1 query) query only up to that point (2 aggregation) aggregate from that point onward */
-        'useWaypoint' => array('filter' => 'boolean',  'default' => false),
+        'useWaypoint' => array('filter' => 'mixed',    'default' => false),
+        /* set a persistance driver and store whatever is queried */
+        'persist'     => array('filter' => 'object',   'default' => false, 'instance' => 'MemoryListPersistanceInterface'),
+		/* set a persistance driver and store whatever is aggregated (after aggregation completed) */
+        'persistAggregate' => array('filter' => 'object',   'default' => false, 'instance' => 'MemoryListPersistanceInterface'),
+		/* aggregate the unused part of the query rather than the queried part, used in conjunction with waypoint only */
+        'aggregateUnused'  => array('filter' => 'boolean',  'default' => false),
         /* get extra data pertaining to query result NOTE needs to be implemented still */
         'debug'       => array('filter' => 'boolean',  'default' => false),
     );
@@ -162,6 +168,13 @@ class MemoryList implements MemoryListInterface
 
                 case 'array' :
                     if (is_array($param))
+                    {
+                        $this->_queryMod[$name]['value'] = $param;
+                    }
+                    break;
+
+                case 'object' :
+                    if (is_object($param) && $param instanceof $this->_queryMod[$name]['instance'])
                     {
                         $this->_queryMod[$name]['value'] = $param;
                     }
@@ -305,6 +318,14 @@ class MemoryList implements MemoryListInterface
         // process remaining data
         $this->storeAggregates($newData, $completedData, $j);
 
+        // if asked, store the aggregate
+        if (isset($this->_queryMod['persistAggregate']['value']) && $this->_queryMod['persistAggregate']['value'])
+        {
+            $persist = $this->_queryMod['persistAggregate']['value'];
+
+            $persist->writeArray($this->_name, $newData);
+        }
+
         // return as the data array would be if queried
         return $completedData;
     }
@@ -357,7 +378,7 @@ class MemoryList implements MemoryListInterface
         
         if (isset($this->_queryMod['useWaypoint']['value']) && $this->_queryMod['useWaypoint']['value'])
         {
-            $waypoint = $this->_memcache->retrieve($this->_memName . '_wp');
+            $waypoint = $this->_memcache->retrieve($this->_getWaypointName($this->_queryMod['useWaypoint']['value']));
 
             if ($waypoint)
             {
@@ -369,11 +390,15 @@ class MemoryList implements MemoryListInterface
 
         $skipTo = (isset($this->_queryMod['offset']['value']) && $this->_queryMod['offset']['value'] ? $this->_queryMod['offset']['value'] : 0);
 
+        $skipCount = 0;
+
         if ($upperBound)
         {
             for ($i = $upperBound, $j = ($upperBound - $limit) ; $i > $lowerBound && $j < $upperBound ; $i -= $decrement)
             {
-                $element = $this->_memcache->retrieve($this->_memName . '_' . $i);
+                $id = $this->_memName . '_' . $i;
+
+                $element = $this->_memcache->retrieve($id);
 
                 if ($element)
                 {
@@ -382,10 +407,13 @@ class MemoryList implements MemoryListInterface
 
                     if ($skipTo <= 0)
                     {
+                        // on multiqueries extra data to classify an element is included
                         if ($extraData)
                         {
                             $element['EXT'] = $extraData;
                         }
+
+                        $element['ID'] = $id;
 
                         $returnArray[] = $element;
                         ++$j;
@@ -393,6 +421,7 @@ class MemoryList implements MemoryListInterface
                     else
                     {
                         --$skipTo;
+                        $skipCount += $decrement;
                     }
                 }
                 // should not be reached, if so there is corrupted data somehow in memcache, such as data overwritten by
@@ -404,6 +433,9 @@ class MemoryList implements MemoryListInterface
                 }
             }
         }
+
+        // makes sure the upper bound takes into account the offset if one was present
+        $upperBound -= $skipCount;
 
         return array($returnArray, $upperBound);
     }
@@ -432,7 +464,14 @@ class MemoryList implements MemoryListInterface
                 // WAYPOINT (save where last query ended)
                 if (isset($this->_queryMod['setWaypoint']['value']) && $this->_queryMod['setWaypoint']['value'])
                 {
-                    $this->_memcache->update($this->_memName . '_wp', $topIndex, $this->_expirey);
+                    $this->_memcache->update($this->_getWaypointName($this->_queryMod['setWaypoint']['value']), $topIndex, $this->_expirey);
+                }
+
+                if (isset($this->_queryMod['persist']['value']) && $this->_queryMod['persist']['value'])
+                {
+                    $persist = $this->_queryMod['persist']['value'];
+
+                    $persist->writeArray($this->_name, $result);
                 }
             }
 
@@ -458,11 +497,18 @@ class MemoryList implements MemoryListInterface
         // pull data after the waypoint with a fresh query and only compact that data.
         $postAggregate = false;
         $sort          = false;
+        $persist       = false;
 
-
+        // SET WHETHER TIME BASED SORTING IS REQUIRED
         if (isset($this->_queryMod['multi']))
         {
             $sort = (isset($this->_queryMod['sort']['value']) ? $this->_queryMod['sort']['value'] : $this->_queryMod['sort']['default']);
+        }
+
+        // SET WHETHER TO USE PERSISTANCE DRIVER ON RESULTS
+        if (isset($this->_queryMod['persist']['value']) && $this->_queryMod['persist']['value'])
+        {
+            $persist = $this->_queryMod['persist']['value'];
         }
 
         // AGGREGATE
@@ -472,9 +518,11 @@ class MemoryList implements MemoryListInterface
             $maxLevel = ($this->_queryMod['aggregate']['value'] === true ? false : (int) $this->_queryMod['aggregate']['value']);
 
             // move top index to the set waypoint if requested
-            if (isset($this->_queryMod['useWaypoint']['value']) && $this->_queryMod['useWaypoint']['value'])
+            if (isset($this->_queryMod['useWaypoint']['value']) && $this->_queryMod['useWaypoint']['value'] &&
+                isset($this->_queryMod['aggregateUnused']['value']) && $this->_queryMod['aggregateUnused']['value']
+            )
             {
-                $topIndex      = $this->_memcache->retrieve($this->_memName . '_wp');
+                $topIndex      = $this->_memcache->retrieve($this->_getWaypointName($this->_queryMod['useWaypoint']['value']));
                 $postAggregate = true;
             }
             else
@@ -486,7 +534,7 @@ class MemoryList implements MemoryListInterface
         // WAYPOINT (save where last query ended)
         if (isset($this->_queryMod['setWaypoint']['value']) && $this->_queryMod['setWaypoint']['value'])
         {
-            $this->_memcache->update($this->_memName . '_wp', $topIndex, $this->_expirey);
+            $this->_memcache->update($this->_getWaypointName($this->_queryMod['setWaypoint']['value']), $topIndex, $this->_expirey);
         }
 
         // REVERSE RESULT
@@ -535,6 +583,23 @@ class MemoryList implements MemoryListInterface
             $returnArray = array_reverse($returnArray);
         }
 
+        // PERSISTANCE DRIVER - WRITE RESULT
+        if ($persist)
+        {
+            $persist->writeArray($this->_name, $returnArray);
+        }
+
         return $returnArray;
+    }
+
+    /**
+     *  Helper function to build a waypoint memcache key based on the query params.
+     *  
+     *  @param waypoint
+     *  @return string representing waypoints memcache key
+     */
+    private function _getWaypointName ($waypoint)
+    {
+        return $this->_memName . '_wp' . (is_string($waypoint) ? '_' . $waypoint : '_');
     }
 }
