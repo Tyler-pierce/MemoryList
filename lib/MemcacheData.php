@@ -268,7 +268,6 @@ class MemcacheData implements MemcacheDataInterface
      */
     public function flush_all()
     {
-        
         return $this->_memConn->flush();
     }
 }
