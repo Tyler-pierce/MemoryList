@@ -1,12 +1,13 @@
 <?php
 
-require_once APPPATH . "/libraries/couch.php";
-require_once APPPATH . "/libraries/couchClient.php";
-require_once APPPATH . "/libraries/couchDocument.php";
-require_once APPPATH . "/libraries/couchReplicator.php";
-
-class MemoryListCi extends MemoryList {
-
+/**
+ *  A memcache handler for all the basic operations of memcached
+ *  (add/remove/inc/dec/etc..)
+ *  
+ *  @author T Pierce <tyler.pierce@gmail.com>
+ */
+class MemoryListCi extends MemoryList
+{
     function __construct($name = false, $timeSlice = TimeSlice::DAY)
     {
         $ci = &get_instance();
