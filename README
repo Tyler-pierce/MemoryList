@@ -3,27 +3,19 @@ MemoryList - Memcached based data structure.
 
 See files for detailed comments, main intent:
 
-General library to store large amounts of data in memcache and be able to easily query and aggregate it.  Try to ensure concurrency safety and reliability best as reasonable for memcache.  See potential uses below for better picture.
+General library to store large amounts of data in memcache and be able to easily query, persistently traverse and aggregate it.  Potential and currently tested uses below.
 
 
 Main features:
-
-* Query modifiers: limit / offset / waypoints (for incrementally updating your view)
+* Query modifiers: limit / offset.
+* Waypoints: keep multiple waypoints to persistently iterate through the stream.
+* Abstraction points available for storing to other medium like mysql, compatible with waypoints and modifiers.
 * Aggregation: frees memory and aggregates data best as possible where similar, or to a max level (aggregate maximum 10 duplicate entries)
-* Multi-Query: maintain and query multiple structures to get time sorted results (under construction)
+* Multi-Query: maintain and query multiple streams to get results sorted by time.
 
 
 Potential Uses:
-
-* Real time stat keeping/viewing (first production use will be tracking facebook likes in real time for site with 50,000,000 monthly uniques, stay tuned for case study deatails and stats)
-
-* Temporarily store app data for many users with periodic persistant storage (at your own risk, obviously it won't keep that safe for ya!).  I suggest double writing to 2 memcache instances as a start.
-
-* Functionality similar to facebooks notifications/requests.
-
-
-Potential Problems:
-
-* Large numbers are not accounted for in any special way at the moment so it is up to the user to decide on spec.  You can use large amounts of data as you want you just have to make use of multiquery and think about what value of timeslice you can use compared to the amount of data that will come in.
-
-* Memory usage is not as good as it could be currently.  Large aggregations will fail, and even if you do aggregations frequently there is still the potential for datasets with lots of non-similar data to run memory up high.  Waypoints can help mitigate this risk for now, though possibly multiple waypoints will help contain it further.  In the future hopefully some of the design on aggregation will be made safer.
+* Real time stat keeping/viewing.
+* Very easy to implement notification system like friends actions on a website.
+* Temporarily store app/stat data for many users with periodic dumps to disk.
+* Chat system. Not an ideal use case but I've done it for fun :)
